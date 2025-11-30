@@ -1,0 +1,114 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+# https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
+kind: Template
+metadata:
+  name: api-express-template
+  title: Node.js API w/ express.js
+  description: A template for creating a Node.js based API using the express.js framework
+spec:
+  owner: user:guest
+  type: service
+
+  # These parameters are used to generate the input form in the frontend, and are
+  # used to gather input data for the execution of the template.
+  parameters:
+    # First Page - Stage 
+    - title: Project Info
+      required:
+        - name
+        - owner
+      properties:
+        name:
+          title: Name
+          type: string
+          description: Unique name of the component
+          # Automatically focuses the cursor on this input field when the form is rendered,
+          # improving user experience by allowing immediate input without manual clicking
+          ui:autofocus: true
+        owner:
+          title: Owner
+          type: string
+          description: Owner of the component
+          # https://backstage.io/docs/features/software-templates/ui-options-examples/
+          # https://backstage.io/docs/features/software-templates/ui-options-examples/#catalogfilter-1
+          # UI field configuration for owner selection
+          # ui:field: OwnerPicker - Uses the OwnerPicker component to allow selection of entity owners
+          # ui:options: Configuration options for the OwnerPicker field
+          #   catalogFilter: Filters the available entities shown in the picker
+          #     kind: [User, Group] - Restricts selection to only entities of type User or Group from the Backstage catalog
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: [User, Group]
+    # Second Page - Stage
+    # We need user to provied repoUrl in order to publish the generated code
+    # https://backstage.io/docs/features/software-templates/ui-options-examples/#repourlpicker
+    - title: Choose Location
+      required:
+        - repoUrl
+      properties:
+        # https://backstage.io/docs/features/software-templates/ui-options-examples/#repourlpicker
+        repoUrl:
+          title: Repository Location
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts:
+              - github.com
+
+
+  # Actions that we want to perform as part of this template
+  # These steps are executed in the scaffolder backend, using data that we gathered
+  # via the parameters above.
+  # 1. Clone/fetch base code/config and perform templating
+  # 2. Publish to GitHub - Create Repo and push code
+  # 3. Register component in catalog (Backstage)
+  steps:
+    # Each step executes an action, in this case one templates files into the working directory.
+    - id: fetch-base
+      name: Fetch Base
+      action: fetch:template
+      input:
+        url: https://github.com/Sanjeev-Thiyagarajan/backstage-express-api-blueprint
+        values:
+          name: ${{ parameters.name }}
+          owner: ${{ parameters.owner }}
+
+    # This step publishes the contents of the working directory to GitHub.
+    # If you or your organization prefer another default branch name over 'main'
+    # you can change that here.
+    - id: publish
+      name: Publish
+      action: publish:github
+      input:
+        description: This is ${{ parameters.name }}
+        repoUrl: ${{ parameters.repoUrl }}
+
+    # The final step is to register our new component in the catalog.
+    - id: register
+      name: Register
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+
+    # Let's notify the user that the template has completed using the Notification action
+    # - id: notify
+    #   name: Notify
+    #   action: notification:send
+    #   input:
+    #     recipients: entity
+    #     entityRefs:
+    #       - user:default/guest
+    #     title: 'Template executed'
+    #     info: 'Your template has been executed'
+    #     severity: 'normal'
+
+  # Outputs are displayed to the user after a successful execution of the template.
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}
