@@ -2,15 +2,19 @@ apiVersion: scaffolder.backstage.io/v1beta3
 # https://backstage.io/docs/features/software-catalog/descriptor-format#kind-template
 kind: Template
 metadata:
-  name: api-express-template
-  title: Node.js API w/ express.js
-  description: A template for creating a Node.js based API using the express.js framework
+  name: nodejs-ec2-template
+  title: Node.js APP on EC2
+  description: A template for creating a Node.js application deployed on AWS EC2 instance
 spec:
   owner: user:guest
   type: service
 
   # These parameters are used to generate the input form in the frontend, and are
   # used to gather input data for the execution of the template.
+  #1. name
+  #2. owner
+  #3. repoUrl
+  #4. ec2InstanceSize
   parameters:
     # First Page - Stage 
     - title: Project Info
@@ -57,19 +61,70 @@ spec:
               - github.com
 
 
+    # Third Page - Stage
+    - title: Deploy EC2
+      required:
+        - instanceType
+      properties:
+        instanceType:
+          title: EC2 Instance Type
+          type: string
+          description: Size of the EC2 instance to deploy the application
+          default: t2.micro
+          enum:
+            - t2.micro
+            - t2.small
+            - t2.medium
+
   # Actions that we want to perform as part of this template
   # These steps are executed in the scaffolder backend, using data that we gathered
   # via the parameters above.
-  # 1. Clone/fetch base code/config and perform templating
+  # 1. Clone/fetch EC2(Infrastructure) skeleton
   # 2. Publish to GitHub - Create Repo and push code
-  # 3. Register component in catalog (Backstage)
+  # 3. Register resource in catalog (Backstage)
+  # 3.5 Terraform Apply to provision EC2 - not needed here as we use Terraform Cloud
+  # 4.Fetch/Clone Application code and perform templating
+  # 5.Publish Application code to GitHub Repo
+  # 6. Register component in catalog (Backstage)
   steps:
     # Each step executes an action, in this case one templates files into the working directory.
-    - id: fetch-base
-      name: Fetch Base
+    - id: fetch-infra-base
+      name: Fetch Infrastructure Base
+      action: fetch:template
+      input:
+        url: https://github.com/Sanjeev-Thiyagarajan/ec2-infra-blueprint
+        targetPath: './infra'
+        values:
+          name: ${{ parameters.name }}
+          owner: ${{ parameters.owner }}
+          instanceType: ${{ parameters.instanceType }}
+
+    # This step publishes the contents of the working directory to GitHub.
+    # If you or your organization prefer another default branch name over 'main'
+    # you can change that here.
+    - id: publish-infra
+      name: Publish Infrastructure
+      action: publish:github
+      input:
+        sourcePath: './infra' # specify the infra folder that has the local code and upload that to github for repoURL
+        description: This is ${{ parameters.name }}-infra
+        allowedHosts: ['github']
+        repoUrl: ${{ parameters.repoUrl }}-infra # here we will have two repos one for infra skeleton and one for app skeleton
+
+    # The final step is to register our new component in the catalog.
+    - id: register
+      name: Register
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish-infra'].output.repoContentsUrl }}
+        catalogInfoPath: '/resource.yaml'
+
+    - id: fetch-app-base
+      name: Fetch Application Base
       action: fetch:template
       input:
         url: https://github.com/Sanjeev-Thiyagarajan/backstage-express-api-blueprint
+        targetPath: './code'
         values:
           name: ${{ parameters.name }}
           owner: ${{ parameters.owner }}
@@ -77,19 +132,21 @@ spec:
     # This step publishes the contents of the working directory to GitHub.
     # If you or your organization prefer another default branch name over 'main'
     # you can change that here.
-    - id: publish
-      name: Publish
+    - id: publish-app
+      name: Publish Application Base
       action: publish:github
       input:
+        sourcePath: './code' # specify the infra folder that has the local code and upload that to github for repoURL
         description: This is ${{ parameters.name }}
-        repoUrl: ${{ parameters.repoUrl }}
+        allowedHosts: ['github']
+        repoUrl: ${{ parameters.repoUrl }} # here we will have two repos one for infra skeleton and one for app skeleton
 
     # The final step is to register our new component in the catalog.
-    - id: register
-      name: Register
+    - id: register-app
+      name: Register Application
       action: catalog:register
       input:
-        repoContentsUrl: ${{ steps['publish'].output.repoContentsUrl }}
+        repoContentsUrl: ${{ steps['publish-app'].output.repoContentsUrl }}
         catalogInfoPath: '/catalog-info.yaml'
 
     # Let's notify the user that the template has completed using the Notification action
@@ -108,7 +165,7 @@ spec:
   output:
     links:
       - title: Repository
-        url: ${{ steps['publish'].output.remoteUrl }}
-      - title: Open in catalog
+        url: ${{ steps['publish-app'].output.remoteUrl }}
+      - title: Open App in catalog
         icon: catalog
-        entityRef: ${{ steps['register'].output.entityRef }}
+        entityRef: ${{ steps['register-app'].output.entityRef }}
