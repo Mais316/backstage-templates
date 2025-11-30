@@ -82,8 +82,6 @@ spec:
       action: publish:github
       input:
         description: This is ${{ parameters.name }}
-        allowedHosts:
-          - github.com
         repoUrl: ${{ parameters.repoUrl }}
 
     # The final step is to register our new component in the catalog.
